@@ -1,0 +1,59 @@
+name: Publish GeoLite2 Mirror
+on:
+  repository_dispatch:
+  workflow_dispatch:
+  schedule:
+    - cron: 0 22 * * 2,5
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+    - name: Download GeoLite.mmdb
+      run: |
+        wget -nv -O- "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-ASN&license_key=${{ secrets.MAXMIND_KEY }}&suffix=tar.gz" | tar zxv
+        wget -nv -O- "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-City&license_key=${{ secrets.MAXMIND_KEY }}&suffix=tar.gz" | tar zxv
+        wget -nv -O- "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-Country&license_key=${{ secrets.MAXMIND_KEY }}&suffix=tar.gz" | tar zxv
+        mkdir -p upload
+        cp -v GeoLite*/*.mmdb upload
+    - name: Download GeoLite.csv
+      run: |
+        wget -nv -O GeoLite2-ASN-CSV.zip "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-ASN-CSV&license_key=${{ secrets.MAXMIND_KEY }}&suffix=zip"
+        wget -nv -O GeoLite2-Country-CSV.zip "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-Country-CSV&license_key=${{ secrets.MAXMIND_KEY }}&suffix=zip"
+        wget -nv -O GeoLite2-City-CSV.zip "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-City-CSV&license_key=${{ secrets.MAXMIND_KEY }}&suffix=zip"
+    - name: Decompress Zips
+      uses: TonyBogdanov/zip@1.0
+      with:
+          args: unzip -qq GeoLite2-*-CSV.zip
+    - name: Prepare ENV variables
+      run: |
+        TAG_DATE=$(ls -d GeoLite2-Country-CSV_* | awk -F '_' '{print $2}')
+        echo "TAG_DATE=$TAG_DATE" >> $GITHUB_ENV
+        cat $GITHUB_ENV > "Geolite2-${TAG_DATE}"
+    - name: Copy GeoLite2.csv
+      run: |
+        cp -v GeoLite*/*.csv upload
+        mv -v *.zip upload
+    - name: Upload to Releases
+      uses: softprops/action-gh-release@v0.1.15
+      env:
+        GITHUB_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
+      with:
+        name: Maxmind Geolite2 ${{ env.TAG_DATE }}
+        tag_name: ${{ env.TAG_DATE }}
+        body: Maxmind Geolite2 database from ${{ env.TAG_DATE }}
+        token: ${{ secrets.BOT_GITHUB_TOKEN }}
+        files: |
+          Geolite2*
+          upload/*.zip
+          upload/*.mmdb
+          upload/GeoLite2-ASN*.csv
+          upload/GeoLite2-Country*.csv
+          upload/GeoLite2-City*.csv
+    - name: Remove old Releases
+      uses: dev-drprasad/delete-older-releases@v0.3.2
+      with:
+        keep_latest: 1
+        delete_tags: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
