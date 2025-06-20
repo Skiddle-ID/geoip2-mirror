@@ -1,13 +1,16 @@
 name: Publish GeoLite2 Mirror
+
 on:
   repository_dispatch:
   workflow_dispatch:
   schedule:
     - cron: 0 22 * * 2,5
+
 jobs:
   run:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+
     steps:
     - name: Download GeoLite.mmdb
       run: |
@@ -16,24 +19,29 @@ jobs:
         wget -nv -O- "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-Country&license_key=${{ secrets.MAXMIND_KEY }}&suffix=tar.gz" | tar zxv
         mkdir -p upload
         cp -v GeoLite*/*.mmdb upload
+
     - name: Download GeoLite.csv
       run: |
         wget -nv -O GeoLite2-ASN-CSV.zip "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-ASN-CSV&license_key=${{ secrets.MAXMIND_KEY }}&suffix=zip"
         wget -nv -O GeoLite2-Country-CSV.zip "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-Country-CSV&license_key=${{ secrets.MAXMIND_KEY }}&suffix=zip"
         wget -nv -O GeoLite2-City-CSV.zip "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-City-CSV&license_key=${{ secrets.MAXMIND_KEY }}&suffix=zip"
+
     - name: Decompress Zips
       uses: TonyBogdanov/zip@1.0
       with:
-          args: unzip -qq GeoLite2-*-CSV.zip
+        args: unzip -qq GeoLite2-*-CSV.zip
+
     - name: Prepare ENV variables
       run: |
         TAG_DATE=$(ls -d GeoLite2-Country-CSV_* | awk -F '_' '{print $2}')
         echo "TAG_DATE=$TAG_DATE" >> $GITHUB_ENV
         cat $GITHUB_ENV > "Geolite2-${TAG_DATE}"
+
     - name: Copy GeoLite2.csv
       run: |
         cp -v GeoLite*/*.csv upload
         mv -v *.zip upload
+
     - name: Upload to Releases
       uses: softprops/action-gh-release@v0.1.15
       env:
@@ -50,3 +58,51 @@ jobs:
           upload/GeoLite2-ASN*.csv
           upload/GeoLite2-Country*.csv
           upload/GeoLite2-City*.csv
+
+    - name: Notify via Discord (Success)
+      if: success()
+      run: |
+        TIME=$(date +"%Y-%m-%d %H:%M:%S")
+        curl -H "Content-Type: application/json" \
+        -X POST -d "$(jq -n --arg repo "${{ github.repository }}" \
+                           --arg workflow "${{ github.workflow }}" \
+                           --arg time "$TIME" \
+                           --arg tag "${{ env.TAG_DATE }}" \
+                           '{
+          "embeds": [{
+            "title": "✅ GeoLite2 Mirror Published",
+            "description": "GeoLite2 files have been downloaded and published successfully.",
+            "color": 3066993,
+            "fields": [
+              {"name": "Repository", "value": $repo, "inline": true},
+              {"name": "Workflow", "value": $workflow, "inline": true},
+              {"name": "Release Tag", "value": $tag, "inline": true},
+              {"name": "Time", "value": $time, "inline": false}
+            ],
+            "footer": {"text": "Skiddle Bot | GitHub Actions"}
+          }]
+        }')" ${{ secrets.DISCORD_WEBHOOK }}
+      shell: bash
+
+    - name: Notify via Discord (Failure)
+      if: failure()
+      run: |
+        TIME=$(date +"%Y-%m-%d %H:%M:%S")
+        curl -H "Content-Type: application/json" \
+        -X POST -d "$(jq -n --arg repo "${{ github.repository }}" \
+                           --arg workflow "${{ github.workflow }}" \
+                           --arg time "$TIME" \
+                           '{
+          "embeds": [{
+            "title": "❌ GeoLite2 Mirror Failed",
+            "description": "An error occurred during the GeoLite2 mirror process.",
+            "color": 15158332,
+            "fields": [
+              {"name": "Repository", "value": $repo, "inline": true},
+              {"name": "Workflow", "value": $workflow, "inline": true},
+              {"name": "Time", "value": $time, "inline": false}
+            ],
+            "footer": {"text": "Skiddle Bot | GitHub Actions"}
+          }]
+        }')" ${{ secrets.DISCORD_WEBHOOK }}
+      shell: bash
