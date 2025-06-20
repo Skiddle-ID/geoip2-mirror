@@ -72,7 +72,7 @@ jobs:
           "embeds": [{
             "title": "✅ GeoLite2 Mirror Published",
             "description": "GeoLite2 files have been downloaded and published successfully.",
-            "color": 3066993,
+            "color": 3447003,
             "fields": [
               {"name": "Repository", "value": $repo, "inline": true},
               {"name": "Workflow", "value": $workflow, "inline": true},
